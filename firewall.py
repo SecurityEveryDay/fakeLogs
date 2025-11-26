@@ -86,6 +86,7 @@ def send_tcp(host, port, lines_iterable, reconnect=True):
                 if sock is None:
                     sock = socket.create_connection(addr, timeout=5)
                 line = next(lines_iterable)
+                print(line)
                 sock.sendall((line + "\n").encode("utf-8"))
             except StopIteration:
                 break
