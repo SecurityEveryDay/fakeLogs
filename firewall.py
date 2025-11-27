@@ -4,10 +4,12 @@ gen_firewall_logs.py
 Gera logs fake de firewall e:
  - salva em arquivo (--file path)
  - ou envia via TCP para um host/porta (--tcp host:port)
+ - ou envia via UDP para um host/porta (--udp host:port)
 
 Exemplos:
   python gen_firewall_logs.py --count 100 --interval 0.1 --file logs.txt
   python gen_firewall_logs.py --count 50 --interval 0.2 --tcp 192.168.1.50:9997
+  python gen_firewall_logs.py --count 50 --interval 0.2 --udp 192.168.1.50:9997
   python gen_firewall_logs.py --count 0 --interval 1 --tcp 127.0.0.1:9997
     (count 0 = enviar indefinidamente até Ctrl+C)
 """
@@ -19,8 +21,9 @@ from datetime import datetime
 
 SERVICES = ["HTTP", "HTTPS", "SSH", "DNS", "SMTP"]
 ACTIONS = ["accept", "close", "deny"]
-PROTO_MAP = { "TCP": 6, "UDP": 17, "ICMP": 1 }
+PROTO_MAP = {"TCP": 6, "UDP": 17, "ICMP": 1}
 LEVELS = ["notice", "warning", "info"]
+
 
 def rand_ip(private=False):
     if private:
@@ -32,14 +35,16 @@ def rand_ip(private=False):
         ])
     return f"{random.randint(1,223)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,254)}"
 
+
 def rand_port():
     return random.randint(1, 65535)
+
 
 def gen_log_line():
     now = datetime.utcnow()
     date = now.strftime("%Y-%m-%d")
     time_s = now.strftime("%H:%M:%S")
-    logid = f"{random.randint(1,9999999999):010d}"
+    logid = f"{random.randint(1, 9999999999):010d}"
     typ = "traffic"
     subtype = random.choice(["forward", "local"])
     level = random.choice(LEVELS)
@@ -76,6 +81,7 @@ def gen_log_line():
     ]
     return " ".join(parts)
 
+
 def send_tcp(host, port, lines_iterable, reconnect=True):
     """Envia linhas por TCP. Se a conexão cair, tenta reconectar (se reconnect=True)."""
     sock = None
@@ -90,7 +96,7 @@ def send_tcp(host, port, lines_iterable, reconnect=True):
                 sock.sendall((line + "\n").encode("utf-8"))
             except StopIteration:
                 break
-            except (BrokenPipeError, ConnectionResetError, socket.error) as e:
+            except (BrokenPipeError, ConnectionResetError, socket.error):
                 # tenta reconectar
                 sock = None
                 if not reconnect:
@@ -101,8 +107,24 @@ def send_tcp(host, port, lines_iterable, reconnect=True):
         if sock:
             try:
                 sock.close()
-            except:
+            except Exception:
                 pass
+
+
+def send_udp(host, port, lines_iterable):
+    """Envia linhas por UDP para host:port."""
+    addr = (host, port)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        for line in lines_iterable:
+            print(line)
+            sock.sendto((line + "\n").encode("utf-8"), addr)
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
 
 def lines_generator(count, interval):
     sent = 0
@@ -114,10 +136,12 @@ def lines_generator(count, interval):
         if interval:
             time.sleep(interval)
 
+
 def append_to_file(path, lines_iterable):
     with open(path, "a", encoding="utf-8") as f:
         for line in lines_iterable:
             f.write(line + "\n")
+
 
 def parse_args():
     p = argparse.ArgumentParser(description="Gerador simples de logs fake de firewall.")
@@ -127,26 +151,29 @@ def parse_args():
                    help="Intervalo em segundos entre logs (pode ser decimal).")
     p.add_argument("--file", help="Caminho do arquivo para salvar logs (append).")
     p.add_argument("--tcp", help="Enviar por TCP para host:port (ex: 192.168.1.10:9997).")
+    p.add_argument("--udp", help="Enviar por UDP para host:port (ex: 192.168.1.10:514).")
     p.add_argument("--seed", type=int, default=None, help="Semente RNG (opcional).")
     return p.parse_args()
+
 
 def main():
     args = parse_args()
     if args.seed is not None:
         random.seed(args.seed)
 
-    if not args.file and not args.tcp:
-        print("ERRO: escolha --file ou --tcp host:port (ou ambos).")
+    if not args.file and not args.tcp and not args.udp:
+        print("ERRO: escolha --file ou --tcp host:port ou --udp host:port (ou combinações).")
         return
 
+    # Gerador base (por conveniência)
     gen = lines_generator(args.count, args.interval)
 
     if args.file:
         # Escreve para arquivo (blocking)
         print(f"[+] Salvando logs em {args.file}")
         append_to_file(args.file, gen)
-        # if both file and tcp specified, need to regenerate generator; simpler: reopen generator
-        if not args.tcp:
+        # se também for enviar por rede, criamos novo gerador
+        if not args.tcp and not args.udp:
             return
 
     if args.tcp:
@@ -157,11 +184,26 @@ def main():
         except Exception:
             print("ERRO: formato inválido para --tcp. Use host:port")
             return
-        print(f"[+] Enviando logs para {host}:{port} (Ctrl+C para parar)")
-        # if file already consumed the generator, create a new one for tcp:
+        print(f"[+] Enviando logs via TCP para {host}:{port} (Ctrl+C para parar)")
+        # se file já consumiu o gerador, criamos um novo para TCP
         gen_for_tcp = lines_generator(args.count, args.interval) if args.file else gen
         send_tcp(host, port, gen_for_tcp)
         print("[+] Envio TCP finalizado.")
+
+    if args.udp:
+        try:
+            host_port = args.udp.split(":")
+            host = host_port[0]
+            port = int(host_port[1])
+        except Exception:
+            print("ERRO: formato inválido para --udp. Use host:port")
+            return
+        print(f"[+] Enviando logs via UDP para {host}:{port} (Ctrl+C para parar)")
+        # se file ou tcp já consumiram o gerador, criamos um novo para UDP
+        gen_for_udp = lines_generator(args.count, args.interval) if (args.file or args.tcp) else gen
+        send_udp(host, port, gen_for_udp)
+        print("[+] Envio UDP finalizado.")
+
 
 if __name__ == "__main__":
     try:
