@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # gen_apache_logs.py
 # Gera logs Apache "fake" com entradas normais e tentativas de XSS, SQLi, brute-force em arquivos/dirs e brute-force de usuários.
-# Uso: python gen_apache_logs.py --count 100 --interval 0.2 --file out.log
-# Autor: ChatGPT (exemplo)
+# Uso:
+#   python gen_apache_logs.py --count 100 --interval 0.2 --file out.log
+#   python gen_apache_logs.py --count 100 --interval 0.2 --tcp 192.168.1.10:9997
+#   python gen_apache_logs.py --count 100 --interval 0.2 --udp 192.168.1.10:514
 
 import argparse
 import random
@@ -14,13 +16,14 @@ from datetime import datetime, timezone
 from itertools import cycle
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Gerador simples de logs fake de firewall.")
+    p = argparse.ArgumentParser(description="Gerador simples de logs fake de Apache.")
     p.add_argument("--count", type=int, default=0,
                    help="Quantidade de logs para gerar (0 = indefinido até Ctrl+C).")
     p.add_argument("--interval", type=float, default=0.5,
                    help="Intervalo em segundos entre logs (pode ser decimal).")
     p.add_argument("--file", help="Caminho do arquivo para salvar logs (append).")
     p.add_argument("--tcp", help="Enviar por TCP para host:port (ex: 192.168.1.10:9997).")
+    p.add_argument("--udp", help="Enviar por UDP para host:port (ex: 192.168.1.10:514).")
     p.add_argument("--seed", type=int, default=None, help="Semente RNG (opcional).")
     return p.parse_args()
 
@@ -134,8 +137,8 @@ def gen_bruteforce_user_request(fail=True):
 def produce_log_entry(rng):
     p = rng.random()
     ip = rng.choice(IPS)
-    ident = "-"  # RFC 1413 identity (rarely used)
-    user = "-"  # authenticated user if any
+    ident = "-"  # RFC 1413 identity (raramente usado)
+    user = "-"   # usuário autenticado, se houver
     dt = datetime.now(timezone.utc)
     ua = rng.choice(USER_AGENTS)
     referer = rng.choice(REFERERS)
@@ -149,11 +152,11 @@ def produce_log_entry(rng):
     # 0.96 - 1.00 => brute users
     if p < 0.70:
         req = gen_normal_request()
-        status = rng.choice([200, 200, 301, 404, 500])  # more likely 200
+        status = rng.choice([200, 200, 301, 404, 500])  # mais chance de 200
     elif p < 0.80:
         req = gen_xss_request()
         status = rng.choice([200, 400, 403, 404])
-        # sometimes include referer indicating injection source
+        # às vezes o referer indica origem do ataque
         referer = "https://attacker.example/"
     elif p < 0.88:
         req = gen_sqli_request()
@@ -161,14 +164,11 @@ def produce_log_entry(rng):
         referer = "-"
     elif p < 0.96:
         req = gen_bruteforce_files_request()
-        # file brute force often produces 404 or 403
         status = rng.choice([403, 404, 200])
         referer = "-"
     else:
         req, u, pwd = gen_bruteforce_user_request()
-        # majority of brute attempts fail (401). Some may be redirected (302) or occasionally succeed (200/302)
         status = rng.choices([401, 401, 401, 302, 200], weights=[60,20,10,5,5])[0]
-        # mark user if successful for realism
         user = u if status in (200, 302) else "-"
         size = rng.randint(200, 1200)
 
@@ -181,8 +181,16 @@ def tcp_send_line(sock, line):
             line = line + "\n"
         sock.sendall(line.encode("utf-8", errors="replace"))
     except Exception as e:
-        # don't crash main loop on send error
         print(f"[!] Erro ao enviar por TCP: {e}", file=sys.stderr)
+
+# UDP send helper
+def udp_send_line(sock, addr, line):
+    try:
+        if not line.endswith("\n"):
+            line = line + "\n"
+        sock.sendto(line.encode("utf-8", errors="replace"), addr)
+    except Exception as e:
+        print(f"[!] Erro ao enviar por UDP: {e}", file=sys.stderr)
 
 # Graceful Ctrl+C
 stop_requested = False
@@ -205,11 +213,24 @@ def main():
             host, port_str = args.tcp.split(":")
             port = int(port_str)
             tcp_sock = socket.create_connection((host, port), timeout=5)
-            # if using syslog-like TCP ingestion, we may need no additional framing; using newline-terminated lines.
             print(f"[+] Conectado a {host}:{port} (TCP).")
         except Exception as e:
             print(f"[!] Não foi possível conectar a {args.tcp}: {e}", file=sys.stderr)
             tcp_sock = None
+
+    udp_sock = None
+    udp_addr = None
+    if args.udp:
+        try:
+            host, port_str = args.udp.split(":")
+            port = int(port_str)
+            udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            udp_addr = (host, port)
+            print(f"[+] Enviando para {host}:{port} (UDP).")
+        except Exception as e:
+            print(f"[!] Não foi possível configurar UDP para {args.udp}: {e}", file=sys.stderr)
+            udp_sock = None
+            udp_addr = None
 
     outfile = None
     if args.file:
@@ -221,8 +242,7 @@ def main():
             outfile = None
 
     generated = 0
-    # safety: if count = 0 => run until Ctrl+C
-    target = args.count if args.count > 0 else None
+    target = args.count if args.count > 0 else None  # 0 => infinito
 
     try:
         while True:
@@ -232,13 +252,12 @@ def main():
                 break
 
             line = produce_log_entry(rng)
-            timestamp_local = datetime.now().isoformat(sep=' ')
             out_line = f"{line}"
 
-            # print to stdout
+            # STDOUT
             print(out_line)
 
-            # write to file if requested
+            # Arquivo
             if outfile:
                 try:
                     outfile.write(out_line + "\n")
@@ -246,12 +265,15 @@ def main():
                 except Exception as e:
                     print(f"[!] Erro ao escrever no arquivo: {e}", file=sys.stderr)
 
-            # send via TCP if requested
+            # TCP
             if tcp_sock:
                 tcp_send_line(tcp_sock, out_line)
 
+            # UDP
+            if udp_sock and udp_addr:
+                udp_send_line(udp_sock, udp_addr, out_line)
+
             generated += 1
-            # respect interval
             time.sleep(args.interval)
     finally:
         if outfile:
@@ -259,6 +281,11 @@ def main():
         if tcp_sock:
             try:
                 tcp_sock.close()
+            except:
+                pass
+        if udp_sock:
+            try:
+                udp_sock.close()
             except:
                 pass
         print(f"[+] Finalizado. Logs gerados: {generated}")
