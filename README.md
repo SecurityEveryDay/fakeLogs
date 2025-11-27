@@ -15,7 +15,25 @@ Este repositório foi criado e expandido com auxílio de **IA**.
 
 ---
 
-### Como usar
+### Como usar de maneira centralizada com o `fakeLogs.py`
+
+```bash
+python3 fakeLogs.py --ssh udp:<ip>:<port> --firewall udp:<ip>:<port> --apache <ip>:<port>
+```
+
+Parâmetros disponíveis:
+
+| Flag                 | Função                              |
+| -------------------- | ----------------------------------- |
+| `--ssh`              | Gera logs SSH                       |
+| `--fortigate`        | Gera logs do Firewall fortigate     |
+| `--apache`           | Gera logs do apache                 |
+| `--tcp ip:porta`     | Enviar logs via TCP                 |
+| `--udp ip:porta`     | Enviar logs via UDP                 |
+| `--file caminho.log` | Salvar logs em arquivo              |
+| `--seed N`           | Geração fixa e repetível (opcional) |
+
+### Como usar os scripts de maneira individual
 
 ```bash
 python <script>.py --count 100 --interval 0.5
