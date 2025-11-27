@@ -4,7 +4,7 @@ Orquestrador para os geradores de logs fake.
 
 Exemplos:
 
-    python fakeLogs.py --apache udp:192.168.0.10:514 --firewall file:fw.log --ssh stdout --count 0 --interval 1
+    python fakeLogs.py --apache udp:192.168.0.10:514 --fortigate file:fw.log --ssh stdout --count 0 --interval 1
 
 Destinos aceitos:
     stdout
@@ -23,7 +23,7 @@ from typing import Dict, List, Tuple, Optional
 
 BASE_SCRIPTS = {
     "apache": "apache.py",
-    "firewall": "firewall.py",
+    "fortigate": "fortigate.py",
     "ssh": "ssh.py",
 }
 
@@ -85,7 +85,7 @@ def build_command(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Orquestrador para múltiplos geradores de fake logs.")
     parser.add_argument("--apache", help="Destino para logs Apache (stdout | file:CAMINHO | tcp:IP:PORTA | udp:IP:PORTA)")
-    parser.add_argument("--firewall", help="Destino para logs de firewall (stdout | file:CAMINHO | tcp:IP:PORTA | udp:IP:PORTA)")
+    parser.add_argument("--fortigate", help="Destino para logs de firewall (stdout | file:CAMINHO | tcp:IP:PORTA | udp:IP:PORTA)")
     parser.add_argument("--ssh", help="Destino para logs de SSH (stdout | file:CAMINHO | tcp:IP:PORTA | udp:IP:PORTA)")
     parser.add_argument("--count", type=int, default=0, help="Quantidade de linhas por script (0 = infinito, segue comportamento atual).")
     parser.add_argument("--interval", type=float, default=0.5, help="Intervalo em segundos entre linhas.")
@@ -97,13 +97,13 @@ def main() -> None:
     requested: Dict[str, str] = {}
     if args.apache:
         requested["apache"] = args.apache
-    if args.firewall:
-        requested["firewall"] = args.firewall
+    if args.fortigate:
+        requested["fortigate"] = args.fortigate
     if args.ssh:
         requested["ssh"] = args.ssh
 
     if not requested:
-        parser.error("Você precisa passar pelo menos um dos flags: --apache, --firewall ou --ssh.")
+        parser.error("Você precisa passar pelo menos um dos flags: --apache, --fortigate ou --ssh.")
 
     processes: List[subprocess.Popen] = []
 
