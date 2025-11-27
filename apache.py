@@ -132,7 +132,7 @@ BENIGN_QUERIES = [
 
 
 def _random_ip() -> str:
-    return str(IPv4Address(random.randint(0, 2**32 - 1)))
+    return str(IPv4Address(random.randint(1, 2**32 - 1)))
 
 
 def _format_timestamp() -> str:
