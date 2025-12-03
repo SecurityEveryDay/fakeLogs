@@ -25,6 +25,7 @@ Parâmetros disponíveis:
 
 | Flag                 | Função                              |
 | -------------------- | ----------------------------------- |
+| `--application porta`      | Sobe uma aplicação que gera logs CRUD fakes em `/audit`, possivel obter via GET, exemplo `GET /audit?last=15min` |
 | `--ssh`              | Gera logs SSH                       |
 | `--fortigate`        | Gera logs do Firewall fortigate     |
 | `--apache`           | Gera logs do apache                 |
@@ -40,6 +41,7 @@ python <script>.py --count 100 --interval 0.5
 python <script>.py --file output.log
 python <script>.py --udp 192.168.0.10:514
 python <script>.py --count 0 --interval 1       # infinito (Ctrl+C para parar)
+python application.py --port 8080               # Sobe a aplicação na porta 8080
 ```
 
 Parâmetros disponíveis:
