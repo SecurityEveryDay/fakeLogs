@@ -2,10 +2,13 @@ from flask import Flask, request, jsonify
 from datetime import datetime, timedelta, timezone
 import random
 import string
+import threading
+import time
 
 app = Flask(__name__)
 
 LOGS = []
+MAX_LOGS = 5000  # só pra não crescer infinito
 
 
 # ----- GERADORES FAKES DRAGON BALL Z ----- #
@@ -93,10 +96,12 @@ def generate_fake_log(timestamp):
         status = "failure"
         http_status = random.choice([401, 403, 404])
 
-    if action in ["warrior_created", "warrior_updated", "warrior_deleted",
-                  "planet_registered", "planet_updated", "planet_deleted",
-                  "dragonball_collected", "tournament_match_created",
-                  "tournament_match_finished", "transformation_unlocked"]:
+    if action in [
+        "warrior_created", "warrior_updated", "warrior_deleted",
+        "planet_registered", "planet_updated", "planet_deleted",
+        "dragonball_collected", "tournament_match_created",
+        "tournament_match_finished", "transformation_unlocked"
+    ]:
         http_status = random.choice([200, 201, 204, 400, 409, 500])
         status = "success" if http_status < 400 else "failure"
 
@@ -167,6 +172,23 @@ def populate_initial_logs(num_logs=500):
     LOGS.sort(key=lambda l: l["timestamp"], reverse=False)
 
 
+# ----- GERADOR CONTÍNUO DE LOGS ----- #
+
+def log_generator_loop(interval_seconds=5):
+    """
+    Gera logs continuamente a cada X segundos.
+    """
+    while True:
+        ts = datetime.now(timezone.utc)
+        LOGS.append(generate_fake_log(ts))
+
+        # mantém tamanho máximo
+        if len(LOGS) > MAX_LOGS:
+            LOGS.pop(0)
+
+        time.sleep(interval_seconds)
+
+
 # ----- PARSE DE PARÂMETROS ----- #
 
 def parse_last_param(last_value):
@@ -234,7 +256,7 @@ def get_audit_logs():
         filtered_logs = list(filter(is_recent, LOGS))
 
     # ordena do mais recente para o mais antigo
-    filtered_logs.sort(key=lambda l: l["timestamp"], reverse=True)
+    filtered_logs = sorted(filtered_logs, key=lambda l: l["timestamp"], reverse=True)
 
     # aplica limite
     result = filtered_logs[:limit]
@@ -250,6 +272,12 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true", help="Ativa modo debug do Flask")
     args = parser.parse_args()
 
+    # popula logs iniciais
     populate_initial_logs()
+
+    # inicia thread que gera logs continuamente
+    t = threading.Thread(target=log_generator_loop, kwargs={"interval_seconds": 5}, daemon=True)
+    t.start()
+
     # debug=True só para laboratório; em produção, remover ou controlar via flag
     app.run(host="0.0.0.0", port=args.port, debug=args.debug)
