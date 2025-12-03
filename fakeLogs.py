@@ -4,7 +4,7 @@ Orquestrador para os geradores de logs fake.
 
 Exemplos:
 
-    python fakeLogs.py --apache udp:192.168.0.10:514 --fortigate file:fw.log --ssh stdout --count 0 --interval 1
+    python fakeLogs.py --apache udp:192.168.0.10:514 --fortigate file:fw.log --ssh stdout --count 0 --interval 1 --application 5000
 
 Destinos aceitos:
     stdout
@@ -25,7 +25,9 @@ BASE_SCRIPTS = {
     "apache": "apache.py",
     "fortigate": "fortigate.py",
     "ssh": "ssh.py",
+    "application": "application.py",  # novo: API Flask
 }
+
 
 def parse_destination(dest: str) -> Tuple[str, Optional[str]]:
     """
@@ -58,6 +60,7 @@ def parse_destination(dest: str) -> Tuple[str, Optional[str]]:
 
     raise ValueError(f"Tipo de destino desconhecido: {kind}")
 
+
 def build_command(
     script: str,
     count: int,
@@ -82,11 +85,17 @@ def build_command(
 
     return cmd
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Orquestrador para múltiplos geradores de fake logs.")
     parser.add_argument("--apache", help="Destino para logs Apache (stdout | file:CAMINHO | tcp:IP:PORTA | udp:IP:PORTA)")
     parser.add_argument("--fortigate", help="Destino para logs de firewall (stdout | file:CAMINHO | tcp:IP:PORTA | udp:IP:PORTA)")
     parser.add_argument("--ssh", help="Destino para logs de SSH (stdout | file:CAMINHO | tcp:IP:PORTA | udp:IP:PORTA)")
+    parser.add_argument(
+        "--application",
+        type=int,
+        help="Porta para subir a API Flask Dragon Ball X (ex: 5000)",
+    )
     parser.add_argument("--count", type=int, default=0, help="Quantidade de linhas por script (0 = infinito, segue comportamento atual).")
     parser.add_argument("--interval", type=float, default=0.5, help="Intervalo em segundos entre linhas.")
     parser.add_argument("--seed", type=int, default=None, help="Seed global de RNG (cada script recebe o mesmo valor, opcional).")
@@ -102,12 +111,13 @@ def main() -> None:
     if args.ssh:
         requested["ssh"] = args.ssh
 
-    if not requested:
-        parser.error("Você precisa passar pelo menos um dos flags: --apache, --fortigate ou --ssh.")
+    # agora também aceitamos só --application
+    if not requested and not args.application:
+        parser.error("Você precisa passar pelo menos um dos flags: --apache, --fortigate, --ssh ou --application.")
 
     processes: List[subprocess.Popen] = []
 
-    # cria um processinho para cada tipo escolhido
+    # cria um processinho para cada tipo escolhido (apache/fortigate/ssh)
     for kind, dest in requested.items():
         script_name = BASE_SCRIPTS[kind]
         script_path = os.path.join(os.path.dirname(__file__), script_name)
@@ -126,6 +136,20 @@ def main() -> None:
         print(f"[+] Iniciando {kind} -> {dest} ({' '.join(cmd)})")
         p = subprocess.Popen(cmd)
         processes.append(p)
+
+    # sobe a aplicação Flask, se solicitado
+    if args.application:
+        script_name = BASE_SCRIPTS.get("application", "application.py")
+        script_path = os.path.join(os.path.dirname(__file__), script_name)
+
+        if not os.path.exists(script_path):
+            print(f"[!] Script da aplicação não encontrado: {script_path}", file=sys.stderr)
+        else:
+            port = args.application
+            cmd = [sys.executable, script_path, "--port", str(port)]
+            print(f"[+] Iniciando application Flask na porta {port} ({' '.join(cmd)})")
+            p = subprocess.Popen(cmd)
+            processes.append(p)
 
     if not processes:
         print("[!] Nenhum processo foi iniciado (verifique erros acima).", file=sys.stderr)
@@ -167,6 +191,7 @@ def main() -> None:
                     p.terminate()
                 except Exception:
                     pass
+
 
 if __name__ == "__main__":
     main()
