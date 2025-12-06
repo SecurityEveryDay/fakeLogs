@@ -25,7 +25,8 @@ BASE_SCRIPTS = {
     "apache": "apache.py",
     "fortigate": "fortigate.py",
     "ssh": "ssh.py",
-    "application": "application.py",  # novo: API Flask
+    "application": "application.py",
+    "app_system": "app_system.py",
 }
 
 
@@ -91,6 +92,7 @@ def main() -> None:
     parser.add_argument("--apache", help="Destino para logs Apache (stdout | file:CAMINHO | tcp:IP:PORTA | udp:IP:PORTA)")
     parser.add_argument("--fortigate", help="Destino para logs de firewall (stdout | file:CAMINHO | tcp:IP:PORTA | udp:IP:PORTA)")
     parser.add_argument("--ssh", help="Destino para logs de SSH (stdout | file:CAMINHO | tcp:IP:PORTA | udp:IP:PORTA)")
+    parser.add_argument("--app_system", help="Destino para logs de app_system (stdout | file:CAMINHO | tcp:IP:PORTA | udp:IP:PORTA)")
     parser.add_argument(
         "--application",
         type=int,
@@ -110,14 +112,16 @@ def main() -> None:
         requested["fortigate"] = args.fortigate
     if args.ssh:
         requested["ssh"] = args.ssh
+    if args.app_system:
+        requested["app_system"] = args.app_system
 
     # agora também aceitamos só --application
     if not requested and not args.application:
-        parser.error("Você precisa passar pelo menos um dos flags: --apache, --fortigate, --ssh ou --application.")
+        parser.error("Você precisa passar pelo menos um dos flags: --apache, --fortigate, --ssh ,--application ou --app_system.")
 
     processes: List[subprocess.Popen] = []
 
-    # cria um processinho para cada tipo escolhido (apache/fortigate/ssh)
+    # cria um processinho para cada tipo escolhido (apache/fortigate/ssh/app_system)
     for kind, dest in requested.items():
         script_name = BASE_SCRIPTS[kind]
         script_path = os.path.join(os.path.dirname(__file__), script_name)
