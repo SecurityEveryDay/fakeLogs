@@ -13,7 +13,16 @@ from common_cli import (
     close_writer,
 )
 
-USERS = ["root", "admin", "ubuntu", "devops", "deploy", "user"]
+USERS = [
+    "bulma", "goku.ssj", "vegeta", "trunks.future", "gohan",
+    "krillin", "tien", "yamcha", "piccolo.sr", "frieza",
+    "zarbon", "dr.brief", "ginyu", "jeice", "recoome", "burter"
+]
+
+HOSTS = [
+    "capsulecorp", "training", "security", "database", "capsulecloud"
+]
+
 SSH_RESULTS = ["Accepted", "Failed", "Invalid"]
 SSH_AUTH_METHODS = ["password", "publickey"]
 SSH_PORTS = [22, 2222]
@@ -24,13 +33,12 @@ def _random_ip() -> str:
 
 
 def _format_timestamp() -> str:
-    # Exemplo de formato de syslog tradicional: "Jan 12 10:15:32"
     return datetime.utcnow().strftime("%b %d %H:%M:%S")
 
 
 def _build_ssh_line() -> str:
     ts = _format_timestamp()
-    host = "fakehost"
+    host = random.choice(HOSTS)
     proc = "sshd"
     pid = random.randint(1000, 9999)
     user = random.choice(USERS)
@@ -63,10 +71,45 @@ def generate_ssh_logs(params: LogParams) -> None:
         random.seed(params.seed)
 
     writer = build_writer(params)
+
+    spray_ip = _random_ip()
+    brute_ip = _random_ip()
+    brute_user = random.choice(USERS)
+
+    def _build_password_spray_line() -> str:
+        ts = _format_timestamp()
+        host = random.choice(HOSTS)
+        proc = "sshd"
+        pid = random.randint(1000, 9999)
+        user = random.choice(USERS)
+        port = random.choice(SSH_PORTS)
+        return (
+            f"{ts} {host} {proc}[{pid}]: Failed password for {user} "
+            f"from {spray_ip} port {port} ssh2"
+        )
+
+    def _build_bruteforce_line() -> str:
+        ts = _format_timestamp()
+        host = random.choice(HOSTS)
+        proc = "sshd"
+        pid = random.randint(1000, 9999)
+        port = random.choice(SSH_PORTS)
+        return (
+            f"{ts} {host} {proc}[{pid}]: Failed password for {brute_user} "
+            f"from {brute_ip} port {port} ssh2"
+        )
+
     try:
         count = 0
         while params.count == 0 or count < params.count:
-            line = _build_ssh_line()
+            r = random.random()
+            if r < 0.2:
+                line = _build_password_spray_line()
+            elif r < 0.4:
+                line = _build_bruteforce_line()
+            else:
+                line = _build_ssh_line()
+
             writer(line)
             count += 1
             time.sleep(params.interval)
