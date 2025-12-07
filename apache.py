@@ -43,6 +43,42 @@ USER_AGENTS = [
     "wpscan v3.8.24",
 ]
 
+# User-Agents típicos de brute-force de diretórios
+DIRB_USER_AGENTS = [
+    "dirb/2.22",
+    "gobuster/3.5",
+    "ffuf/1.5.0",
+]
+
+# Palavras de wordlist para brute-force de diretórios (estilo dirb)
+DIRB_WORDLIST_PATHS = [
+    "/admin/",
+    "/admin/login/",
+    "/administrator/",
+    "/backup/",
+    "/backups/",
+    "/config/",
+    "/config.php",
+    "/login.php",
+    "/phpinfo.php",
+    "/test/",
+    "/tests/",
+    "/old/",
+    "/old-site/",
+    "/backup.zip",
+    "/db.sql",
+    "/.git/",
+    "/.env",
+    "/server-status",
+    "/phpMyAdmin/",
+    "/console/",
+    "/vendor/",
+    "/private/",
+    "/secret/",
+    "/logs/",
+    "/log/",
+]
+
 # Perfis por path: probabilidade de ataque e tipos de ataque preferidos
 PATH_ATTACK_PROFILES = {
     "/login": {
@@ -149,7 +185,6 @@ def _choose_attack_type_for_path(path: str) -> str:
     profile = PATH_ATTACK_PROFILES.get(path)
     if profile and profile.get("preferred"):
         preferred = profile["preferred"]
-        # Se houver mais de um preferido, escolhe um aleatoriamente
         return random.choice(preferred)
 
     # Distribuição padrão (quando não há perfil)
@@ -167,7 +202,6 @@ def _build_attack_query(attack_type: str | None = None) -> str:
 
     if attack_type == "sqli":
         payload = random.choice(SQLI_PAYLOADS)
-        # Exemplos mais “login/auth”
         param = random.choice(["username", "user", "id", "login"])
         raw = f"{param}=admin{payload}"
     elif attack_type == "xss":
@@ -179,7 +213,6 @@ def _build_attack_query(attack_type: str | None = None) -> str:
         param = random.choice(["file", "path", "page"])
         raw = f"{param}={payload}"
 
-    # Codifica para aparecer como URL “real”
     return urllib.parse.quote_plus(raw, safe="=&")
 
 
@@ -191,20 +224,17 @@ def _build_request_path() -> str:
     base_path = random.choice(HTTP_PATHS)
     profile = PATH_ATTACK_PROFILES.get(base_path, None)
 
-    # Probabilidade padrão de ataque caso não haja perfil
     default_attack_prob = 0.2
     attack_prob = profile["attack_prob"] if profile else default_attack_prob
 
     is_attack = random.random() < attack_prob
 
     if not is_attack:
-        # Requisição benigna, às vezes com query normal
         if random.random() < 0.5:
             query = random.choice(BENIGN_QUERIES)
             return f"{base_path}?{query}"
         return base_path
 
-    # Requisição com payload de ataque, tipo guiado pelo path
     attack_type = _choose_attack_type_for_path(base_path)
     query = _build_attack_query(attack_type)
     return f"{base_path}?{query}"
@@ -228,7 +258,6 @@ def _build_referrer() -> str:
     if ref_type == "benign":
         return random.choice(BENIGN_REFERRERS)
 
-    # Referrer malicioso, com tipo de ataque aleatório
     attack_type = random.choice(["sqli", "xss", "other"])
     attack_query = _build_attack_query(attack_type)
     host = random.choice(
@@ -254,11 +283,41 @@ def _build_apache_line() -> str:
     referrer = _build_referrer()
     ua = random.choice(USER_AGENTS)
 
-    # Formato combined log:
-    # %h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-agent}i"
     return (
         f'{ip} {ident} {user} [{ts}] "{method} {path} {proto}" '
-        f'{status} {size} "{referrer}" "{ua}"'
+        f"{status} {size} \"{referrer}\" \"{ua}\""
+    )
+
+
+def _build_dir_bruteforce_line(scanner_ip: str) -> str:
+    """
+    Simula brute force em diretórios (estilo dirb/gobuster):
+    - Mesmo IP de origem (scanner_ip)
+    - Mesmo User-Agent de scanner
+    - Paths variando conforme wordlist
+    - Respostas principalmente 404
+    """
+    ip = scanner_ip
+    ident = "-"
+    user = "-"
+    ts = _format_timestamp()
+    method = "GET"
+    path = random.choice(DIRB_WORDLIST_PATHS)
+    proto = random.choice(HTTP_PROTOCOLS)
+
+    # Maioria 404, com pequena chance de 200/301 para simular achados
+    status = random.choices(
+        [404, 404, 404, 404, 200, 301],
+        weights=[40, 40, 40, 40, 5, 5],
+    )[0]
+
+    size = random.randint(150, 900)
+    referrer = "-"
+    ua = random.choice(DIRB_USER_AGENTS)
+
+    return (
+        f'{ip} {ident} {user} [{ts}] "{method} {path} {proto}" '
+        f"{status} {size} \"{referrer}\" \"{ua}\""
     )
 
 
@@ -267,10 +326,21 @@ def generate_apache_logs(params: LogParams) -> None:
         random.seed(params.seed)
 
     writer = build_writer(params)
+
+    # IP fixo para o scanner de diretórios (dirb-like)
+    dirb_ip = _random_ip()
+
     try:
         count = 0
         while params.count == 0 or count < params.count:
-            line = _build_apache_line()
+            # ~70% tráfego "normal/ataque de parâmetros"
+            # ~30% brute force em diretórios (404 em massa)
+            r = random.random()
+            if r < 0.3:
+                line = _build_dir_bruteforce_line(dirb_ip)
+            else:
+                line = _build_apache_line()
+
             writer(line)
             count += 1
             time.sleep(params.interval)
