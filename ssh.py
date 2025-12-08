@@ -16,7 +16,7 @@ from common_cli import (
 USERS = [
     "bulma", "goku.ssj", "vegeta", "trunks.future", "gohan",
     "krillin", "tien", "yamcha", "piccolo.sr", "frieza",
-    "zarbon", "dr.brief", "ginyu", "jeice", "recoome", "burter"
+    "zarbon", "dr.brief", "ginyu", "jeice", "recoome", "burter", "devops"
 ]
 
 HOSTS = [
