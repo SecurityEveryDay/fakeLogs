@@ -26,14 +26,14 @@ Parâmetros disponíveis:
 | Flag                 | Função                              |
 | -------------------- | ----------------------------------- |
 | `--application porta`      | Sobe uma aplicação que gera logs CRUD fakes em `/audit`, possivel obter via GET, exemplo `GET /audit?last=15min` |
-| `--ssh`              | Gera logs SSH                       |
+| `--ssh`              | Gera logs de alertas do Cortex XDR                       |
+| `--cortex_xdr`              | Gera logs SSH                       |
 | `--fortigate`        | Gera logs do Firewall fortigate     |
 | `--apache`           | Gera logs do apache                 |
 | `--app_system`       | Gera logs de uma aplicação customizada no padrão CRUD |
 | `--tcp ip:porta`     | Enviar logs via TCP                 |
 | `--udp ip:porta`     | Enviar logs via UDP                 |
-| `--file caminho.log` | Salvar logs em arquivo              |
-| `--seed N`           | Geração fixa e repetível (opcional) |
+
 
 ### Como usar os scripts de maneira individual
 
